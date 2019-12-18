@@ -38,6 +38,7 @@ class PingPong(arcade.Window):
         self.scoreR  = 0
         self.pong    = None
         self.dottedLine = None
+        self.masterBall = None
         arcade.set_background_color(arcade.color.BLACK)
     def passed(self):
         self.playerL.center_x = 10
@@ -66,11 +67,8 @@ class PingPong(arcade.Window):
         self.pong.center_y = HEIGHT/2
         self.pong.change_x = BALLSPEED
         self.pong.change_y = BALLSPEED
-        try:
-            threading.Thread(target=self.createconns())
-        except Exception as e:
-            print('************************')
-            print(str(e))
+        self.createconns()
+
 
     def on_draw(self):
         arcade.start_render()
@@ -83,62 +81,87 @@ class PingPong(arcade.Window):
 
 
     def on_update(self, delta_time):
-        self.playerR.update()
-        self.playerL.update()
-        self.pong.update()
+        if self.masterBall:
+            self.playerL.update()
+            self.pong.update()
+        else:
+            self.playerR.update()
 
     def update(self, delta_time):
-        HitR = arcade.check_for_collision(self.pong, self.playerR)
-        HitL = arcade.check_for_collision(self.pong, self.playerL)
-        if HitR or HitL:
-            self.pong.change_x = - self.pong.change_x
-            if HitR:
-                self.pong.center_x -= 5
-            else:
-                self.pong.center_x += 5
+        if self.masterBall:
+            HitR = arcade.check_for_collision(self.pong, self.playerR)
+            HitL = arcade.check_for_collision(self.pong, self.playerL)
+            if HitR or HitL:
+                self.pong.change_x = - self.pong.change_x
+                if HitR:
+                    self.pong.center_x -= 5
+                else:
+                    self.pong.center_x += 5
         if self.pong.center_x < 0:
             self.scoreR += 1
+            time.sleep(0.1)
             self.passed()
         elif self.pong.center_x > WIDTH - 1:
             self.scoreL += 1
+            time.sleep(0.1)
             self.passed()
 
     def on_key_press(self, key, modifires):
-        if key == arcade.key.UP:
-            self.playerR.change_y = SPEED
-        elif key == arcade.key.DOWN:
-            self.playerR.change_y = -SPEED
-        if key == arcade.key.W:
-            self.playerL.change_y = SPEED
-        elif key == arcade.key.S:
-            self.playerL.change_y = -SPEED
+        if self.masterBall:
+            if key == arcade.key.W:
+                self.playerL.change_y = SPEED
+            elif key == arcade.key.S:
+                self.playerL.change_y = -SPEED
+        else:
+            if key == arcade.key.UP:
+                self.playerR.change_y = SPEED
+            elif key == arcade.key.DOWN:
+                self.playerR.change_y = -SPEED
 
     def on_key_release(self, key, modifires):
-        if key == arcade.key.UP or key == arcade.key.DOWN:
-            self.playerR.change_y = 0
-        if key == arcade.key.W or key == arcade.key.S:
-            self.playerL.change_y = 0
-    def sendxy(self, c, masterBall):
+        if self.masterBall:
+            if key == arcade.key.W or key == arcade.key.S:
+                self.playerL.change_y = 0
+        else:
+            if key == arcade.key.UP or key == arcade.key.DOWN:
+                self.playerR.change_y = 0
+    def sendxy(self, c):
         while True:
-            if masterBall:
-                c.send(f'{self.playerL.center_y},{self.pong.center_x},{self.pong.center_y}'.encode())
+            if self.masterBall:
+                c.send(f'{self.playerL.center_y},{self.pong.center_x},{self.pong.center_y},'.encode())
             else:
-                c.send(f'{self.playerR.center_y}'.encode())
-            time.sleep(0.01)
+                c.send(f'{self.playerR.center_y},'.encode())
+            time.sleep(0.001)
 
-    def recvxy(self, client, masterBall):
+    def recvxy(self, client):
         while True:
-            if masterBall:
-                y = client.recv(1024).decode()
+            if self.masterBall:
+                y = client.recv(1024).decode().split(',')[0]
                 self.playerR.center_y = int(float(y))
                 print('recived :',y)
             else:
-                y, ballx, bally = client.recv(1024).decode().split(',')
+                tmp = client.recv(1024)
+                print('recievd : ', tmp.decode())
+                tmp = tmp.decode().split(',')
+                y = tmp[0]
+                ballx = tmp[1]
+                bally = tmp[2]
                 self.pong.center_x = int(float(ballx))
                 self.pong.center_y = int(float(bally))
                 self.playerL.center_y = int(float(y))
-                print('recived :',y,ballx, bally)
-
+    def spawnReadWriters(self, c, client):
+        try:
+            send = threading.Thread(target=self.sendxy, args=(c, ))
+            send.daemen = True
+            send.start()
+            recv = threading.Thread(target=self.recvxy, args=(client, ))
+            recv.daemon = True
+            recv.start()
+            # send.join()
+            # recv.join()
+        except Exception as e:
+            print(str(e))
+            print('threading error')
     def createconns(self):
         server = socket.socket()
         client = socket.socket()
@@ -148,7 +171,7 @@ class PingPong(arcade.Window):
         sport = int(sys.argv[4])
         server.bind((ihost, iport))
         print('trying to connect to host')
-        masterBall = False
+        self.masterBall = False
         try:
             client.connect((shost, sport))
             print('connected')
@@ -156,17 +179,7 @@ class PingPong(arcade.Window):
             c, addr = server.accept()
             print(f'accept connection from{addr}')
             print('*****first connection then listened')
-            masterBall = True
-            try:
-                send = threading.Thread(target=self.sendxy, args=(c, masterBall, ))
-                send.start()
-                recv = threading.Thread(target=self.recvxy, args=(client, masterBall, ))
-                recv.start()
-                # send.join()
-                # recv.join()
-            except Exception as e:
-                print(str(e))
-                print('threading error')
+            self.spawnReadWriters(c, client)
         except Exception as e:
             print(str(e))
             try:
@@ -176,24 +189,34 @@ class PingPong(arcade.Window):
                 print(f'accept conn from{addr}')
                 client.connect((shost, sport))
                 print('********* first server then connection')
-                try:
-                    send = threading.Thread(target=self.sendxy, args=(c, masterBall, ))
-                    send.start()
-                    recv = threading.Thread(target=self.recvxy, args=(client, masterBall, ))
-                    recv.start()
-                    # send.join()
-                    # recv.join()
-                except Exception as e:
-                    print(str(e))
-                    print('threading error')
+                self.masterBall = True
+                self.spawnReadWriters(c, client)
             except Exception as e:
                 print(str(e))
                 print('some wierd shit happend')
         # client.close()
         # server.close()
 
-
+def checkins():
+    if (len(sys.argv) < 6):
+        tmp = input('socket 1 host:')
+        if tmp == '':
+            tmp = '127.0.0.1'
+        sys.argv.append(tmp)
+        tmp = input('socket 1 port:')
+        if tmp == '':
+            tmp = '1999'
+        sys.argv.append(tmp)
+        tmp = input('socket 2 host:')
+        if tmp == '':
+            tmp = '127.0.0.1'
+        sys.argv.append(tmp)
+        tmp = input('socket 2 port')
+        if tmp == '':
+            tmp = '2999'
+        sys.argv.append(tmp)
 def main():
+    checkins()
     game = PingPong(WIDTH, HEIGHT, TITLE)
     game.setup()
     arcade.run()
