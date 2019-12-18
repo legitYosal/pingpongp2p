@@ -2,12 +2,14 @@ import arcade
 import os
 import socket
 import sys
+import time
+import threading
 
-WIDTH = 1024
+WIDTH = 600
 HEIGHT = 600
 TITLE = "ping pong"
-SPEED = 15
-BALLSPEED = 10
+SPEED = 5
+BALLSPEED = 2
 class Rocket(arcade.Sprite):
     def update(self):
         self.center_x += self.change_x
@@ -64,6 +66,11 @@ class PingPong(arcade.Window):
         self.pong.center_y = HEIGHT/2
         self.pong.change_x = BALLSPEED
         self.pong.change_y = BALLSPEED
+        try:
+            threading.Thread(target=self.createconns())
+        except Exception as e:
+            print('************************')
+            print(str(e))
 
     def on_draw(self):
         arcade.start_render()
@@ -111,11 +118,80 @@ class PingPong(arcade.Window):
             self.playerR.change_y = 0
         if key == arcade.key.W or key == arcade.key.S:
             self.playerL.change_y = 0
-    def listenConn(self):
+    def sendxy(self, c, masterBall):
+        while True:
+            if masterBall:
+                c.send(f'{self.playerL.center_y},{self.pong.center_x},{self.pong.center_y}'.encode())
+            else:
+                c.send(f'{self.playerR.center_y}'.encode())
+            time.sleep(0.01)
 
-        pass
-    def sendConn(self):
-        pass
+    def recvxy(self, client, masterBall):
+        while True:
+            if masterBall:
+                y = client.recv(1024).decode()
+                self.playerR.center_y = int(float(y))
+                print('recived :',y)
+            else:
+                y, ballx, bally = client.recv(1024).decode().split(',')
+                self.pong.center_x = int(float(ballx))
+                self.pong.center_y = int(float(bally))
+                self.playerL.center_y = int(float(y))
+                print('recived :',y,ballx, bally)
+
+    def createconns(self):
+        server = socket.socket()
+        client = socket.socket()
+        ihost = sys.argv[1]
+        iport = int(sys.argv[2])
+        shost = sys.argv[3]
+        sport = int(sys.argv[4])
+        server.bind((ihost, iport))
+        print('trying to connect to host')
+        masterBall = False
+        try:
+            client.connect((shost, sport))
+            print('connected')
+            server.listen(5)
+            c, addr = server.accept()
+            print(f'accept connection from{addr}')
+            print('*****first connection then listened')
+            masterBall = True
+            try:
+                send = threading.Thread(target=self.sendxy, args=(c, masterBall, ))
+                send.start()
+                recv = threading.Thread(target=self.recvxy, args=(client, masterBall, ))
+                recv.start()
+                # send.join()
+                # recv.join()
+            except Exception as e:
+                print(str(e))
+                print('threading error')
+        except Exception as e:
+            print(str(e))
+            try:
+                print('*********** connection failed starting server')
+                server.listen(5)
+                c, addr = server.accept()
+                print(f'accept conn from{addr}')
+                client.connect((shost, sport))
+                print('********* first server then connection')
+                try:
+                    send = threading.Thread(target=self.sendxy, args=(c, masterBall, ))
+                    send.start()
+                    recv = threading.Thread(target=self.recvxy, args=(client, masterBall, ))
+                    recv.start()
+                    # send.join()
+                    # recv.join()
+                except Exception as e:
+                    print(str(e))
+                    print('threading error')
+            except Exception as e:
+                print(str(e))
+                print('some wierd shit happend')
+        # client.close()
+        # server.close()
+
 
 def main():
     game = PingPong(WIDTH, HEIGHT, TITLE)
