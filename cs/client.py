@@ -153,7 +153,7 @@ class PingPong(arcade.Window):
         data = server.recv(1024)
         if not data:
             print('** connection was closed by server')
-            client.close()
+            server.close()
             return
         data = data.decode('ascii')
         print('where recv from server: ', data)
