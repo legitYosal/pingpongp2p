@@ -10,6 +10,8 @@ HEIGHT = 600
 TITLE = "ping pong"
 SPEED = 5
 BALLSPEED = 2
+
+
 class Rocket(arcade.Sprite):
     def update(self):
         self.center_x += self.change_x
@@ -19,6 +21,7 @@ class Rocket(arcade.Sprite):
         elif self.center_y + 95 > HEIGHT - 1:
             self.center_y = HEIGHT - 95
         # print("plyaerR x:", self.change_x, " y:", self.change_y)
+
 class Ball(arcade.Sprite):
     def update(self):
         self.center_x += self.change_x
@@ -40,6 +43,7 @@ class PingPong(arcade.Window):
         self.dottedLine = None
         self.masterBall = None
         arcade.set_background_color(arcade.color.BLACK)
+
     def passed(self):
         self.playerL.center_x = 10
         self.playerL.center_y = HEIGHT/2
@@ -78,7 +82,6 @@ class PingPong(arcade.Window):
         self.pong.draw()
         arcade.draw_text(f"{self.scoreL}              {self.scoreR}",
                          WIDTH/2 - 75, HEIGHT - 30, arcade.color.WHITE, 28)
-
 
     def on_update(self, delta_time):
         if self.masterBall:
